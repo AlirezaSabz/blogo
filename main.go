@@ -15,6 +15,12 @@ type RegisterRequest struct {
 	Password string `json:"password" form:"password"`
 }
 
+type Articles struct {
+	Id      int    `json:"id" form:"id"`
+	Title   string `json:"title" form:"title"`
+	Content string `json:"content" form:"title"`
+}
+
 func main() {
 	e := echo.New()
 
@@ -25,16 +31,29 @@ func main() {
 	}
 	defer db.Close()
 
-	CreateTableQuery := `
+	CreateUsersTable := `
 	CREATE TABLE IF NOT EXISTS users (
 	id INT AUTO_INCREMENT PRIMARY KEY,
 	username VARCHAR(50) NOT NULL UNIQUE,
 	pass_word VARCHAR(50) NOT NULL 
 	);`
-	_, err = db.Exec(CreateTableQuery)
+	_, err = db.Exec(CreateUsersTable)
 
 	if err != nil {
 		log.Fatal("ERROR in Creating Users Table: ", err)
+	}
+
+	CreatArticlesTable := `
+	CREATE TABLE IF NOT EXISTS articles (
+    id INT AUTO_INCREMENT PRIMARY KEY ,
+	title VARCHAR(100) NOT NULL,
+	content TEXT NOT NULL 
+	)
+	`
+
+	_, err = db.Exec(CreatArticlesTable)
+	if err != nil {
+		log.Fatal("ERROR in Creating Article Table: ", err)
 	}
 
 	e.POST("/login", func(c echo.Context) error {
@@ -67,6 +86,59 @@ func main() {
 		fmt.Println("Data successfully stored in database!")
 
 		return c.JSON(http.StatusOK, RegisterInfo)
+	})
+
+	e.POST("/api/v1/articles", func(c echo.Context) error {
+		var article Articles
+		err = c.Bind(&article)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Database error"})
+		}
+		ArticleInsertQuery := `
+			INSERT INTO articles (title, content)
+			VALUES (? , ?);`
+		_, err = db.Exec(ArticleInsertQuery, article.Title, article.Content)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error inserting new articles!"})
+		}
+		return c.JSON(http.StatusOK, article)
+
+	})
+
+	e.GET("/api/v1/articles", func(c echo.Context) error {
+		articles := make([]Articles, 0)
+
+		articleRows, err := db.Query(`SELECT * FROM articles;`)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error fetching list of aticles!"})
+		}
+		var article Articles
+		for articleRows.Next() {
+			err := articleRows.Scan(&article.Id, &article.Title, &article.Content)
+			if err != nil {
+				log.Fatal(err)
+			}
+			articles = append(articles, article)
+		}
+
+		return c.JSON(http.StatusOK, articles)
+	})
+
+	e.GET("/api/v1/articles/:id", func(c echo.Context) error {
+
+		id := c.Param("id")
+		selectRowQuery := `SELECT * FROM articles
+		WHERE id = ? ;`
+		selectedRow := db.QueryRow(selectRowQuery, id)
+
+		var article Articles
+		err = selectedRow.Scan(&article.Id, &article.Title, &article.Content)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return c.JSON(http.StatusOK, article)
+
 	})
 
 	e.Start(":8080")
