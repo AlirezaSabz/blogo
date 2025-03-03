@@ -16,6 +16,7 @@ func main() {
 	database.InitDB(DB)
 
 	e.POST("/register", handlers.Register)
+	e.POST("/login", handlers.Login)
 	articles := e.Group("/api/v1/articles")
 	articles.POST("", handlers.CreateArticle)
 	articles.GET("", handlers.GetArticle)

@@ -3,10 +3,14 @@ package handlers
 import (
 	"blogo/configs"
 	"blogo/internal/models"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 )
 
@@ -42,6 +46,38 @@ func Register(c echo.Context) error {
 	fmt.Println("Data successfully stored in database!")
 
 	return c.JSON(http.StatusOK, RegisterInfo)
+}
+
+func Login(c echo.Context) error {
+	var user models.Users
+	var passInDB string
+	c.Bind(&user)
+	var query = `SELECT pass_word FROM users WHERE username=? `
+	err := DB.QueryRow(query, user.Username).Scan(&passInDB)
+	if err == sql.ErrNoRows {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "username or password is incorrect "})
+	} else if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	if passInDB == user.Password {
+		secretKey := os.Getenv("JWT_SECRET")
+		jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"username": user.Username,
+			"exp":      time.Now().Add(time.Hour).Unix(),
+		})
+		signedjwtToken, err := jwtToken.SignedString([]byte(secretKey))
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"Error ": err.Error()})
+
+		} else {
+			return c.JSON(http.StatusAccepted, map[string]string{"Your JWT ": signedjwtToken})
+
+		}
+
+	} else {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "password is incorrect "})
+	}
 }
 
 func CreateArticle(c echo.Context) error {
