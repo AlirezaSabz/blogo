@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -18,16 +19,20 @@ var DB = configs.DB
 
 func Register(c echo.Context) error {
 
-	var RegisterInfo models.Users
+	var RegisterInfo models.User
 
 	err := c.Bind(&RegisterInfo)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
+	if RegisterInfo.Password == "" || RegisterInfo.Username == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Usernsme and Password are required"})
+	}
 
 	var UserCheck bool
 	checkUserQuery := "SELECT EXISTS( SELECT 1 FROM users WHERE username= ?);"
 	err = DB.QueryRow(checkUserQuery, RegisterInfo.Username).Scan(&UserCheck)
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Database error"})
 	}
@@ -49,7 +54,7 @@ func Register(c echo.Context) error {
 }
 
 func Login(c echo.Context) error {
-	var user models.Users
+	var user models.User
 	var passInDB string
 	var userId int
 	c.Bind(&user)
@@ -85,7 +90,7 @@ func Login(c echo.Context) error {
 }
 
 func CreateArticle(c echo.Context) error {
-	var article models.Articles
+	var article models.Article
 	err := c.Bind(&article)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Database error"})
@@ -94,7 +99,7 @@ func CreateArticle(c echo.Context) error {
 	claims := user.Claims.(jwt.MapClaims)
 	userId := claims["user_id"].(float64)
 
-	article.Author_id = int(userId)
+	article.AuthorID = int(userId)
 
 	ArticleInsertQuery := `
 		INSERT INTO articles (title, content,author_id )
@@ -116,15 +121,15 @@ func CreateArticle(c echo.Context) error {
 
 func GetArticle(c echo.Context) error {
 
-	articles := make([]models.Articles, 0)
+	articles := make([]models.Article, 0)
 
 	articleRows, err := DB.Query(`SELECT id , title ,content ,author_id FROM articles;`)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error fetching list of aticles!"})
 	}
-	var article models.Articles
+	var article models.Article
 	for articleRows.Next() {
-		err := articleRows.Scan(&article.Id, &article.Title, &article.Content, &article.Author_id)
+		err := articleRows.Scan(&article.Id, &article.Title, &article.Content, &article.AuthorID)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -141,12 +146,78 @@ func GetArticleById(c echo.Context) error {
 
 	selectedRow := DB.QueryRow(selectRowQuery, id)
 
-	var article models.Articles
-	err := selectedRow.Scan(&article.Id, &article.Title, &article.Content, &article.Author_id)
+	var article models.Article
+	err := selectedRow.Scan(&article.Id, &article.Title, &article.Content, &article.AuthorID)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	return c.JSON(http.StatusOK, article)
+
+}
+
+func SendComment(c echo.Context) error {
+	var comment models.Comment
+
+	user := c.Get("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	comment.UserID = int(claims["user_id"].(float64))
+
+	comment.ArticleID, _ = strconv.Atoi(c.Param("id"))
+
+	err := c.Bind(&comment)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, comment)
+	}
+	commentInsertQuery := `
+	INSERT INTO comments ( content ,user_id,article_id )
+	VALUES ( ? , ?, ?);`
+	_, err = DB.Exec(commentInsertQuery, comment.Content, comment.UserID, comment.ArticleID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error inserting new articles!"})
+	}
+
+	selectRowQuery := `SELECT comment_id FROM  comments ORDER BY comment_id DESC LIMIT 1`
+	id := DB.QueryRow(selectRowQuery)
+	err = id.Scan(&comment.ID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error Sending Comment !"})
+	}
+
+	return c.JSON(http.StatusAccepted, comment)
+}
+
+func GetAllComments(c echo.Context) error {
+	comments := make([]models.Comment, 0)
+	var comment models.Comment
+
+	getCommentsQuery := `SELECT comment_id , content, article_id ,user_id FROM comments`
+	commentRows, err := DB.Query(getCommentsQuery)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error Fetching Comments 1 !"})
+	}
+
+	for commentRows.Next() {
+		err := commentRows.Scan(&comment.ID, &comment.Content, &comment.ArticleID, &comment.UserID)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error Fetching Comments 2!"})
+		}
+		comments = append(comments, comment)
+	}
+
+	return c.JSON(http.StatusOK, comments)
+
+}
+
+func GetCommentByID(c echo.Context) error {
+	var comment models.Comment
+	commentID := c.Param("commentid")
+	GetCommentByIDQuery := `SELECT comment_id , content, article_id ,user_id FROM comments WHERE comment_id= ?`
+	commentRow := DB.QueryRow(GetCommentByIDQuery, commentID)
+	err := commentRow.Scan(&comment.ID, &comment.Content, &comment.ArticleID, &comment.UserID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error Fetching Comment!"})
+	}
+	return c.JSON(http.StatusOK, comment)
 
 }

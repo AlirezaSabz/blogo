@@ -27,6 +27,9 @@ func main() {
 	articles.POST("", handlers.CreateArticle)
 	articles.GET("", handlers.GetArticle)
 	articles.GET("/:id", handlers.GetArticleById)
+	articles.POST("/:id/comments", handlers.SendComment)
+	articles.GET("/:id/comments", handlers.GetAllComments)
+	articles.GET("/:id/comments/:commentid", handlers.GetCommentByID)
 
 	e.Start(":8080")
 }
