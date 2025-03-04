@@ -23,7 +23,12 @@ func InitDB(DB *sql.DB) {
 	CREATE TABLE IF NOT EXISTS articles (
     id INT AUTO_INCREMENT PRIMARY KEY ,
 	title VARCHAR(100) NOT NULL,
-	content TEXT NOT NULL 
+	content TEXT NOT NULL ,
+	author_id INT NOT NULL,
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	status ENUM('draft', 'published', 'archived') DEFAULT 'draft',
+    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
 	)
 	`
 

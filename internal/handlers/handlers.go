@@ -51,9 +51,10 @@ func Register(c echo.Context) error {
 func Login(c echo.Context) error {
 	var user models.Users
 	var passInDB string
+	var userId int
 	c.Bind(&user)
-	var query = `SELECT pass_word FROM users WHERE username=? `
-	err := DB.QueryRow(query, user.Username).Scan(&passInDB)
+	var findPasswordQuery = `SELECT pass_word FROM users WHERE username=? `
+	err := DB.QueryRow(findPasswordQuery, user.Username).Scan(&passInDB)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "username or password is incorrect "})
 	} else if err != nil {
@@ -61,9 +62,12 @@ func Login(c echo.Context) error {
 	}
 
 	if passInDB == user.Password {
+		var findIdQuery = `SELECT id FROM users WHERE username=?`
+		DB.QueryRow(findIdQuery, user.Username).Scan(&userId)
 		secretKey := os.Getenv("JWT_SECRET")
 		jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"username": user.Username,
+			"user_id":  userId,
 			"exp":      time.Now().Add(time.Hour).Unix(),
 		})
 		signedjwtToken, err := jwtToken.SignedString([]byte(secretKey))
@@ -86,10 +90,16 @@ func CreateArticle(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Database error"})
 	}
+	user := c.Get("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	userId := claims["user_id"].(float64)
+
+	article.Author_id = int(userId)
+
 	ArticleInsertQuery := `
-		INSERT INTO articles (title, content)
-		VALUES (? , ?);`
-	_, err = DB.Exec(ArticleInsertQuery, article.Title, article.Content)
+		INSERT INTO articles (title, content,author_id )
+		VALUES (? , ? , ?);`
+	_, err = DB.Exec(ArticleInsertQuery, article.Title, article.Content, userId)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error inserting new articles!"})
 	}
@@ -105,15 +115,16 @@ func CreateArticle(c echo.Context) error {
 }
 
 func GetArticle(c echo.Context) error {
+
 	articles := make([]models.Articles, 0)
 
-	articleRows, err := DB.Query(`SELECT * FROM articles;`)
+	articleRows, err := DB.Query(`SELECT id , title ,content ,author_id FROM articles;`)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error ": "Error fetching list of aticles!"})
 	}
 	var article models.Articles
 	for articleRows.Next() {
-		err := articleRows.Scan(&article.Id, &article.Title, &article.Content)
+		err := articleRows.Scan(&article.Id, &article.Title, &article.Content, &article.Author_id)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -126,12 +137,12 @@ func GetArticle(c echo.Context) error {
 func GetArticleById(c echo.Context) error {
 
 	id := c.Param("id")
-	selectRowQuery := `SELECT * FROM articles
-	WHERE id = ? ;`
+	selectRowQuery := `SELECT id, title, content ,author_id FROM articles WHERE id = ?`
+
 	selectedRow := DB.QueryRow(selectRowQuery, id)
 
 	var article models.Articles
-	err := selectedRow.Scan(&article.Id, &article.Title, &article.Content)
+	err := selectedRow.Scan(&article.Id, &article.Title, &article.Content, &article.Author_id)
 	if err != nil {
 		log.Fatal(err)
 	}

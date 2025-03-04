@@ -5,7 +5,8 @@ type Users struct {
 	Password string `json:"password" form:"password"`
 }
 type Articles struct {
-	Id      int    `json:"id" form:"id"`
-	Title   string `json:"title" form:"title"`
-	Content string `json:"content" form:"title"`
+	Id        int    `json:"id" form:"id"`
+	Title     string `json:"title" form:"title"`
+	Content   string `json:"content" form:"title"`
+	Author_id int    `json:"author_id" form:"author_id"`
 }
